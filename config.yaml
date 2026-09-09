@@ -1,0 +1,34 @@
+data:
+  seed: 42                      # RNG seed — same seed gives identical data
+  days: 30                      # number of days to generate
+  sample_rate_seconds: 60       # seconds between samples (60 = one per minute)
+  start: "2026-01-01 00:00:00"  # timestamp of the first sample
+  output: data/sensors.csv      # output path, relative to repo root
+
+  baseline:
+    phi: 0.999                  # pull-back toward the mean; near 1 = slow return
+    slow_std: 0.02              # step size of the slow drift
+
+  sensors:
+    - id: PMP-01                # sensor identifier, becomes the column name
+      type: pump_temperature    # what it measures — used for filtering in stage 3
+      unit: C                   # unit of measurement, documentation only
+      mean: 65.0                # normal operating value
+      noise_std: 1.2            # spread of the fast measurement noise
+      daily_amp: 2.0            # amplitude of the 24-hour cycle
+
+    - id: MTR-03
+      type: motor_vibration
+      unit: mm/s
+      mean: 2.1
+      noise_std: 0.3
+      daily_amp: 0.3
+
+    - id: TR-114
+      type: oil_temperature
+      unit: C
+      mean: 55.0
+      noise_std: 0.8
+      daily_amp: 4.0
+
+
