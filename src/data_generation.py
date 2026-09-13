@@ -90,6 +90,89 @@ def build_dataframe(cfg: dict) -> pd.DataFrame:
 
     return pd.DataFrame(series, index=index)
 
+
+def inject_spike(
+    values: np.ndarray,
+    start_idx: int,
+    end_idx: int,
+    magnitude: float,
+) -> None:
+    """Add a large offset to a short window. Simulates a sensor glitch.
+
+    Args:
+        values: Signal to modify, in place.
+        start_idx: First affected sample, (must be above 0).
+        end_idx: One past the last affected sample.
+        magnitude: Offset in sensor units.
+    """
+    values[start_idx:end_idx] += magnitude
+
+
+def inject_flatline(
+        values: np.ndarray, 
+        start_idx: int, 
+        end_idx: int
+) -> None:
+    """Freeze the signal at its last value before the window. Simulates faulty sensor.
+
+    Args:
+        values: Signal to modify, in place.
+        start_idx: First affected sample.
+        end_idx: One past the last affected sample.
+    """
+    if start_idx < 1:
+        raise ValueError("start_idx must be >= 1")
+
+    values[start_idx:end_idx] = values[start_idx - 1]
+
+
+def inject_drift(
+    values: np.ndarray,
+    start_idx: int,
+    end_idx: int,
+    magnitude: float,
+) -> None:
+    """Ramp the signal linearly from 0 to magnitude over the window.
+
+    Simulates a gradually developing fault, such as a bearing heating up.
+
+    Args:
+        values: Signal to modify, in place.
+        start_idx: First affected sample.
+        end_idx: One past the last affected sample.
+        magnitude: Peak offset at the end of the window, in sensor units.
+    """
+    ramp = np.linspace(0, 1, end_idx - start_idx)
+    values[start_idx:end_idx] += magnitude * ramp
+
+
+def inject_variance(
+    values: np.ndarray,
+    start_idx: int,
+    end_idx: int,
+    magnitude: float,
+    rng: np.random.Generator,
+    base_noise_std: float,
+) -> None:
+    """Add noise with linearly growing spread. Mean stays unchanged.
+
+    Simulates developing mechanical imbalance.
+
+    Args:
+        values: Signal to modify, in place.
+        start_idx: First affected sample.
+        end_idx: One past the last affected sample.
+        magnitude: Peak extra spread as a multiple of base_noise_std.
+        rng: Random generator.
+        base_noise_std: The sensor's normal noise level.
+    """
+    n_samples = end_idx - start_idx
+    ramp = np.linspace(0, 1, n_samples)
+    extra = rng.normal(0, 1, n_samples) * ramp * magnitude * base_noise_std
+    values[start_idx:end_idx] += extra
+
+
+
 def main() -> None:
     """Generate the dataset and write it to disk."""
     cfg = load_config()
