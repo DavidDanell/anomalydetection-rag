@@ -35,3 +35,32 @@ data:
       slow_std: 0.0125
 
 
+faults:
+  output: data/faults.csv       # ground truth, never read by the detector
+  seed: 1337                    # separate from the baseline seed
+
+  injections:
+    - sensor: PMP-01            # spike — sensor glitch, easy case
+      type: spike
+      start: "2026-01-03 14:22:00"
+      duration_minutes: 2
+      magnitude: 8.5
+
+    - sensor: PMP-01            # drift — bearing heating up, the hard case
+      type: drift
+      start: "2026-01-07 02:00:00"
+      duration_minutes: 360
+      recovery_minutes: 180
+      magnitude: 5.0
+
+    - sensor: MTR-03            # variance — developing imbalance
+      type: variance
+      start: "2026-01-11 06:00:00"
+      duration_minutes: 720
+      magnitude: 2            # multiplier of the sensor's noise_std
+
+    - sensor: TR-114            # flatline — sensor stopped updating
+      type: flatline
+      start: "2026-01-15 19:00:00"
+      duration_minutes: 240
+      magnitude: 0.0            # not applicable, kept for a uniform schema
