@@ -143,3 +143,12 @@ faults:
       start: "2026-01-27 22:00:00"
       duration_minutes: 90
       magnitude: 0.0
+
+detection:
+  output: data/detections.csv   # detector output, generated
+  alarm_gap_minutes: 30         # flags closer than this on one sensor = same alarm
+
+  zscore:
+    window: 120                 # samples in the rolling window (2 hours)
+    threshold: 3.0              # z-score above this counts as an anomaly
+    min_periods: 60             # minimum samples before producing a score
