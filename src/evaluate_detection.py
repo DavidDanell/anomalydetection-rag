@@ -1,11 +1,14 @@
 """Evaluate detected alarms against the fault manifest."""
 
 import copy
+from collections.abc import Callable
 
 import pandas as pd
 
 from data_generation import build_dataset
-from detect import ROOT, detect_all, load_config
+from detect import ROOT, detect_iforest, detect_zscore, load_config
+
+Detector = Callable[[pd.DataFrame, dict], pd.DataFrame]
 
 
 def group_alarms(detections: pd.DataFrame, gap_minutes: int) -> pd.DataFrame:
@@ -100,57 +103,62 @@ def recall_by_type(faults: pd.DataFrame) -> pd.DataFrame:
     return table
 
 
-def chance_recall(cfg: dict, faults: pd.DataFrame) -> pd.Series:
-    """Recall the detector scores on the same baseline with no faults.
-
-    Faults use their own seed, so the baseline is identical with and
-    without them. Any alarm starting inside a fault window on clean data
-    is chance — this is the recall to beat.
-
-    Args:
-        cfg: Parsed config.yaml.
-        faults: The fault manifest, used only for its windows.
-
-    Returns:
-        Chance recall per fault type.
-    """
+def run_on_clean(cfg: dict, detector: Detector) -> pd.DataFrame:
+    """Run a detector on the same baseline with all faults removed."""
     clean_cfg = copy.deepcopy(cfg)
     clean_cfg["faults"]["injections"] = []
-
     clean_sensors, _ = build_dataset(clean_cfg)
-    detections = detect_all(clean_sensors, clean_cfg)
+    return detector(clean_sensors, clean_cfg)
 
-    alarms = group_alarms(detections, cfg["detection"]["alarm_gap_minutes"])
-    _, matched = match_alarms(alarms, faults)
 
+def chance_recall(clean: pd.DataFrame, faults: pd.DataFrame, gap: int) -> pd.Series:
+    """Recall scored on fault-free data — the level to beat."""
+    _, matched = match_alarms(group_alarms(clean, gap), faults)
     return recall_by_type(matched)["recall"]
 
 
+DETECTORS: dict[str, Detector] = {
+    "zscore": detect_zscore,
+    "iforest": detect_iforest,
+}
+
+
+def flags_per_fault(detections: pd.DataFrame, faults: pd.DataFrame) -> pd.Series:
+    """Count flagged samples inside each fault window."""
+    counts = {}
+    for _, f in faults.iterrows():
+        inside = (
+            (detections["sensor_id"] == f["sensor_id"])
+            & (detections["timestamp"] >= f["start"])
+            & (detections["timestamp"] <= f["end"])
+        )
+        counts[f["fault_id"]] = int(inside.sum())
+    return pd.Series(counts)
+
+
 def main() -> None:
-    """Evaluate alarms against the manifest and report metrics."""
+    """Evaluate every detector against the manifest and against chance."""
     cfg = load_config()
-
     sensors, faults = build_dataset(cfg)
-    detections = detect_all(sensors, cfg)
+    gap = cfg["detection"]["alarm_gap_minutes"]
 
-    alarms = group_alarms(detections, cfg["detection"]["alarm_gap_minutes"])
-    alarms, faults = match_alarms(alarms, faults)
+    for name, detector in DETECTORS.items():
+        detections = detector(sensors, cfg)
+        clean = run_on_clean(cfg, detector)
 
-    print()
-    table = recall_by_type(faults)
-    table["chance_recall"] = chance_recall(cfg, faults)
-    print(table.round(2).to_string())
-    n_true = alarms["fault_id"].notna().sum()
-    print()
-    print(
-        faults[
-            ["fault_id", "sensor_id", "fault_type", "detected", "delay_min"]
-        ].to_string(index=False)
-    )
-    print(f"\nPrecision: {precision(alarms):.1%}")
-    print(f"{len(alarms)} larm: {n_true} sanna, {len(alarms) - n_true} falska")
-    print(f"{faults['detected'].sum()} av {len(faults)} fel hittade")
+        alarms, matched = match_alarms(group_alarms(detections, gap), faults)
+        table = recall_by_type(matched)
+        table["chance_recall"] = chance_recall(clean, faults, gap)
 
+        per_fault = faults.set_index("fault_id")[["fault_type"]]
+        per_fault["with_fault"] = flags_per_fault(detections, faults)
+        per_fault["without_fault"] = flags_per_fault(clean, faults)
+
+        print(f"\n=== {name} ===")
+        print(f"Precision: {precision(alarms):.1%}  ({len(alarms)} larm)")
+        print(table.round(2).to_string())
+        print()
+        print(per_fault.to_string())
 
 if __name__ == "__main__":
     main()

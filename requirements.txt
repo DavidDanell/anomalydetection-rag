@@ -2,3 +2,4 @@ numpy
 pandas
 matplotlib
 pyyaml
+scikit-learn

@@ -37,3 +37,26 @@
 
 - **One noise realisation.** All results come from a single seed. Which fault
   windows happen to contain a false alarm would change with another.
+
+- **Event recall cannot separate a good detector from a bad one.** Both
+  detectors score 1.0 recall on drift, and both score 1.0 on the fault-free
+  baseline. Counting flags inside each fault window shows the real picture:
+  z-score has 6 flags against 3 on clean data, Isolation Forest has 156
+  against 8. Recall is reported here only alongside the flag counts.
+
+- **Rolling z-score detects only spikes.** 4 of 16 faults produce flag counts
+  above the fault-free level. Its apparent recall on drift and variance is
+  chance.
+
+- **Isolation Forest detects 11 of 16.** The five it misses are the weakest
+  and the shortest faults.
+
+- **contamination is a shared budget.** It flags a fixed share of samples per
+  sensor, so a short fault competes with louder faults on the same sensor.
+  F011 alone takes 215 of PMP-01's 418 slots, which is part of why the two
+  short flatlines are missed.
+
+- **Four faults per fault type.** One fault changing outcome moves that type's
+  recall by 25 percentage points. Per-type results show direction, not precision.
+
+- **One noise realisation.** All results come from a single seed.

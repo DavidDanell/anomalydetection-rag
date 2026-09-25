@@ -3,6 +3,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import yaml
+from sklearn.ensemble import IsolationForest
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def rolling_zscore(
@@ -32,27 +35,13 @@ def rolling_zscore(
     return (values - mean) / std.replace(0.0, np.nan)
 
 
-# s = pd.Series([10.0] * 100 + [20.0] + [10.0] * 10)
-# z = rolling_zscore(s, window=50, min_periods=20)
-# print(z.iloc[95:105])
-
-# rng = np.random.default_rng(0)
-# s = pd.Series(rng.normal(10, 0.5, 200))
-# s.iloc[150] += 5.0
-
-# z = rolling_zscore(s, window=50, min_periods=20)
-# print('\n',z.iloc[148:153].round(2))
-
-ROOT = Path(__file__).resolve().parents[1]
-
-
 def load_config() -> dict:
     """Load and parse config.yaml from the repo root."""
     with open(ROOT / "config.yaml", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
-def detect_all(sensors: pd.DataFrame, cfg: dict) -> pd.DataFrame:
+def detect_zscore(sensors: pd.DataFrame, cfg: dict) -> pd.DataFrame:
     """Score every sensor and flag samples above the threshold.
 
     Args:
@@ -80,7 +69,84 @@ def detect_all(sensors: pd.DataFrame, cfg: dict) -> pd.DataFrame:
                     "sensor_id": sensor_id,
                     "method": "zscore",
                     "value": round(sensors.at[timestamp, sensor_id], 3),
-                    "score": round(score, 3)
+                    "score": round(score, 3),
+                }
+            )
+
+    return pd.DataFrame(rows)
+
+
+def build_features(
+    values: pd.Series,
+    samples_per_day: int,
+    std_window: int,
+    level_window: int,
+) -> pd.DataFrame:
+    """Build context features for one sensor.
+
+    Each feature turns a contextual anomaly into a point anomaly. The raw
+    value is deliberately excluded — it would reintroduce the daily cycle.
+
+    Args:
+        values: Sensor signal, indexed by timestamp.
+        samples_per_day: Samples in 24 hours.
+        std_window: Samples in the rolling std window.
+        level_window: Samples in the rolling mean window.
+
+    Returns:
+        One row per timestamp with a complete feature set.
+    """
+    features = pd.DataFrame(
+        {
+            "diff_24h": values - values.shift(samples_per_day),
+            "std_60": values.rolling(std_window).std(),
+            "dev_6h": values - values.rolling(level_window).mean(),
+        }
+    )
+    return features.dropna()
+
+
+def detect_iforest(sensors: pd.DataFrame, cfg: dict) -> pd.DataFrame:
+    """Flag anomalies with one Isolation Forest per sensor.
+
+    Each model is fitted on the data it scores — the realistic
+    unsupervised setting, where no fault-free period is known.
+
+    Args:
+        sensors: Signal data, one column per sensor.
+        cfg: Parsed config.yaml.
+
+    Returns:
+        Long-format frame with one row per flagged sample.
+    """
+    params = cfg["detection"]["iforest"]
+    samples_per_day = 24 * 3600 // cfg["data"]["sample_rate_seconds"]
+
+    rows = []
+    for sensor_id in sensors.columns:
+        X = build_features(
+            sensors[sensor_id],
+            samples_per_day,
+            params["std_window"],
+            params["level_window"],
+        )
+        model = IsolationForest(
+            n_estimators=params["n_estimators"],
+            contamination=params["contamination"],
+            random_state=params["seed"],
+        ).fit(X)
+
+        is_anomaly = model.predict(X) == -1
+        scores = -model.decision_function(X)
+
+        for timestamp, score in zip(X.index[is_anomaly], scores[is_anomaly]):
+            rows.append(
+                {
+                    "timestamp": timestamp,
+                    "sensor_id": sensor_id,
+                    "method": "iforest",
+                    "value": round(sensors.at[timestamp, sensor_id], 3),
+                    "score": round(score, 3),
                 }
             )
 
@@ -88,20 +154,21 @@ def detect_all(sensors: pd.DataFrame, cfg: dict) -> pd.DataFrame:
 
 
 def main() -> None:
-    """Run detection and write the flagged samples to disk."""
+    """Run both detectors and write all flagged samples to disk."""
     cfg = load_config()
-
     sensors = pd.read_csv(
         ROOT / cfg["data"]["output"], index_col="timestamp", parse_dates=True
     )
 
-    detections = detect_all(sensors, cfg)
+    detections = pd.concat(
+        [detect_zscore(sensors, cfg), detect_iforest(sensors, cfg)],
+        ignore_index=True,
+    )
     out = ROOT / cfg["detection"]["output"]
     detections.to_csv(out, index=False)
 
     print(f"{len(detections)} flaggade samples -> {out}")
-    print()
-    print(detections["sensor_id"].value_counts())
+    print(detections.groupby(["method", "sensor_id"]).size())
 
 
 if __name__ == "__main__":

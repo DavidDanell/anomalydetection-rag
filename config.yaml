@@ -152,3 +152,10 @@ detection:
     window: 120                 # samples in the rolling window (2 hours)
     threshold: 3.0              # z-score above this counts as an anomaly
     min_periods: 60             # minimum samples before producing a score
+
+  iforest:
+    std_window: 60              # samples for rolling std (1 hour)
+    level_window: 360           # samples for rolling mean (6 hours)
+    n_estimators: 200           # number of trees
+    seed: 0
+    contamination: 0.01         # alarm budget: share of samples flagged
