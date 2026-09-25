@@ -1,0 +1,56 @@
+
+=== zscore ===
+Precision: 5.9%  (540 larm)
+            n_faults  detected  median_delay_min  recall  chance_recall
+fault_type                                                             
+drift              4         4              61.0     1.0           1.00
+flatline           4         0               NaN     0.0           0.75
+spike              4         4               0.0     1.0           0.00
+variance           4         4             136.5     1.0           1.00
+
+         fault_type  with_fault  without_fault
+fault_id                                      
+F001          spike           2              0
+F002          spike           2              0
+F003          spike           1              0
+F004          spike           2              0
+F005          drift           6              3
+F006          drift           1              5
+F007          drift           5              5
+F008          drift           3              4
+F009       variance           5              1
+F010       variance           2              3
+F011       variance           9              3
+F012       variance           4              2
+F013       flatline           0              3
+F014       flatline           0              1
+F015       flatline           0              0
+F016       flatline           0              1
+
+=== iforest ===
+Precision: 14.6%  (198 larm)
+            n_faults  detected  median_delay_min  recall  chance_recall
+fault_type                                                             
+drift              4         4             146.5    1.00           1.00
+flatline           4         3              99.0    0.75           0.75
+spike              4         4               0.0    1.00           0.00
+variance           4         4             188.0    1.00           1.00
+
+         fault_type  with_fault  without_fault
+fault_id                                      
+F001          spike           2              0
+F002          spike           2              0
+F003          spike           1              0
+F004          spike           1              0
+F005          drift          32              4
+F006          drift           3             11
+F007          drift         156              8
+F008          drift           1              3
+F009       variance         169              5
+F010       variance         146              3
+F011       variance         215             14
+F012       variance          11              8
+F013       flatline          56              3
+F014       flatline         119              1
+F015       flatline           1              0
+F016       flatline           0              2
